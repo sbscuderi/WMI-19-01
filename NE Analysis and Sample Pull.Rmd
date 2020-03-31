@@ -1,0 +1,96 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(dbplyr)
+library(DT)
+library(tidyr)
+library(readr)
+library(readxl)
+library(tibble)
+library(lubridate)
+library(stringr)
+library(Hmisc)
+library(anesrake)
+library(weights)
+library(haven)
+
+knitr::opts_chunk$set(comment = NA)
+```
+
+## R Markdown
+```{r}
+lic_sales<- read_excel("E:/SA/Data-sensitive/WMI-19-01/State License Records for National Survey/NEGP/Southwick_03.06.2020_List of 2019 Hunting Permit Owners.xlsx")
+```
+
+Removing Fur Harvest Permit and Non Resident Records
+```{r}
+lic_sales<-lic_sales[!lic_sales$PermitGroup=="Fur Harvest Permits",]
+lic_sales<-lic_sales[!lic_sales$CustomerResident=="F",]
+```
+
+Creating a customer database
+```{r}
+cust<-lic_sales
+cust<- distinct(cust, OwnerCustomerUID, .keep_all = TRUE) %>%
+  select(OwnerCustomerUID,dob,email,firstName,lastName,Sex)
+```
+
+Adding binary variables to indicate Annual, Lifetime, Big Game and Combo license purchases 
+```{r}
+lic_sales$Combo<- 
+  ifelse(lic_sales$PermitGroup == "Hunt Fish Combo Permits", 1, 0)
+
+lic_sales$BG<- 
+  ifelse(lic_sales$PermitGroup == "Big Game Permits", 1, 0)
+
+lic_sales$Lifetime<- 
+  ifelse(grepl("Lifetime",lic_sales$PermitName)==TRUE,1,0)
+
+lic_sales$Annual<- 
+  ifelse(lic_sales$Combo==0 & lic_sales$BG==0 & lic_sales$Lifetime==0,1,0)
+```
+
+Adding license purchase observations to customer database (cust)
+```{r}
+#Combo Licenses______________________________________________
+cust %>% group_by(OwnerCustomerUID) 
+filter(lic_sales, Combo>=1) 
+y_customers <- as.data.frame(filter(lic_sales, Combo==1)) %>% 
+  unique() %>% 
+  select(OwnerCustomerUID, Combo)
+cust <- left_join(cust, y_customers, by = "OwnerCustomerUID") %>% unique()
+rm(y_customers)
+
+#Annual Hunt Licenses________________________________________
+filter(lic_sales, Annual>=1) 
+y_customers <- as.data.frame(filter(lic_sales, Annual>=1)) %>% 
+  unique() %>% 
+  select(OwnerCustomerUID, Annual)
+cust <- left_join(cust, y_customers, by = "OwnerCustomerUID") %>% unique()
+rm(y_customers)
+
+#Lifetime Licenses______________________________________________
+cust %>% group_by(OwnerCustomerUID) 
+filter(lic_sales, Lifetime>=1) 
+y_customers <- as.data.frame(filter(lic_sales, Lifetime==1)) %>% 
+  unique() %>% 
+  select(OwnerCustomerUID, Lifetime)
+cust <- left_join(cust, y_customers, by = "OwnerCustomerUID") %>% unique()
+rm(y_customers)
+
+#BG Licenses______________________________________________
+cust %>% group_by(OwnerCustomerUID) 
+filter(lic_sales, BG>=1) 
+y_customers <- as.data.frame(filter(lic_sales, BG==1)) %>% 
+  unique() %>% 
+  select(OwnerCustomerUID, BG)
+cust <- left_join(cust, y_customers, by = "OwnerCustomerUID") %>% unique()
+rm(y_customers)
+
+#Turn NAs for missing licenses into 0s for counting purposes
+cust[is.na(cust)] <- 0
+```

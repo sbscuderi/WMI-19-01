@@ -94,3 +94,174 @@ rm(y_customers)
 #Turn NAs for missing licenses into 0s for counting purposes
 cust[is.na(cust)] <- 0
 ```
+Calculate age group based on birthdate
+```{r}
+cust$DateOfBirth<-as.Date.factor(cust$DateOfBirth)
+
+cust$age <- 2019 - year(cust$DateOfBirth)
+
+cust$age_group <- 
+  ifelse((0 <= cust$age & cust$age < 18), "17 or younger",
+  ifelse((18 <= cust$age & cust$age <= 24), "18 to 24", 
+  ifelse((25 <= cust$age & cust$age <= 34), "25 to 34", 
+  ifelse((35 <= cust$age & cust$age <= 44), "35 to 44", 
+  ifelse((45 <= cust$age & cust$age <= 54), "45 to 54", 
+  ifelse((55 <= cust$age & cust$age <= 64), "55 to 64", 
+  ifelse((65 <= cust$age), "65+", 
+  "broken"
+)))))))
+
+#Dropping customers under 18
+cust<-cust[!(cust$age_group=="17 or younger"),]
+```
+
+Cleaning up the Gender varaible
+```{r}
+cust$Gender <- 
+  ifelse(cust$Gender=="Male", "M",
+  ifelse(cust$Gender=="M", "M", 
+  ifelse(cust$Gender=="F","F", "missing")))
+```
+
+Printing Demographics for License Population
+```{r}
+#Age Groups
+age_table<-cbind(table(cust$age_group),prop.table(table(cust$age_group)))
+colnames(age_table)<-c("count","percent")
+
+view(age_table)
+write.csv(age_table, file = "SD_hunter_age.csv")
+
+#Gender
+gender_table<-cbind(table(cust$Gender),prop.table(table(cust$Gender)))
+colnames(gender_table)<-c("count","percent")
+
+write.csv(gender_table, file = "SD_hunter_gender.csv")
+
+#Annual License
+annual_table<-cbind(table(cust$Annual),prop.table(table(cust$Annual)))
+colnames(annual_table)<-c("count","percent")
+
+write.csv(annual_table, file = "SD_Annual_Hunt_Lic.csv")
+
+#Combo License
+combo_table<-cbind(table(cust$Combo),prop.table(table(cust$Combo)))
+colnames(combo_table)<-c("count","percent")
+
+write.csv(combo_table, file = "SD_Combo_Hunt_Lic.csv")
+```
+
+Creating subset of hunters with email addresses
+```{r}
+svy<-subset(cust,cust$EmailAddress!="")
+svy<-subset(svy,grepl("@",svy$EmailAddress)=="TRUE")
+
+#Convert variable types to Factor
+svy$age_group<-as.factor(svy$age_group)
+svy$Gender<-as.factor(svy$Gender)
+svy$Combo<-as.factor(svy$Combo)
+svy$Annual<-as.factor(svy$Annual)
+```
+
+Defining Population Statistics
+```{r}
+pop <- list(
+    age_group = c("18 to 24" = 0.1373835,
+                  "25 to 34" = 0.1828647,
+                  "35 to 44" = 0.1856015,
+                  "45 to 54" = 0.1535746,
+                  "55 to 64" = 0.1768688,
+                  "65+" = 0.1637070),
+    Gender = c("M" = 0.877083943, "F" = 0.120680650, 
+               "missing" = 0.002235407),
+    Annual = c("0" = 0.2108281,"1" = 0.7891719),
+    Combo = c("0" = 0.4020077,"1" = 0.5979923))
+```
+
+Weighting function to be used on email list
+```{r}
+est_wts <- function(
+    svy, pop, print_name = "", idvar = "HunterID", cap = 20
+) {
+    # run weighting
+    wts <- anesrake(pop, svy, caseid = svy[[idvar]], force1 = TRUE, cap = cap)
+    
+    # print summary
+    cat("\nWeight Summary for", print_name, "-----------------------------\n\n")
+    print(summary(wts))
+    
+    # return output
+    svy$rake_wt <- wts$weightvec
+    svy
+}
+```
+
+Run Weighting
+```{r}
+cust_wt <- est_wts(svy, pop)
+```
+
+Weighting is unnessessary, because subset of hunters with valid email addresses already resemble the larger hunting population so closely. See demographics of records with valid email below:
+
+Printing Demographics for sample
+```{r}
+#Age Groups
+age_table<-cbind(table(svy$age_group),prop.table(table(svy$age_group)))
+colnames(age_table)<-c("count","percent")
+
+write.csv(age_table, file = "SD_Email_List_age.csv")
+
+#Gender
+gender_table<-cbind(table(svy$Gender),prop.table(table(svy$Gender)))
+colnames(gender_table)<-c("count","percent")
+
+write.csv(gender_table, file = "SD_Email_List_gender.csv")
+
+#Annual License
+annual_table<-cbind(table(svy$Annual),prop.table(table(svy$Annual)))
+colnames(annual_table)<-c("count","percent")
+
+write.csv(annual_table, file = "SD_Email_List_Annual_Hunt_Lic.csv")
+
+#Combo License
+combo_table<-cbind(table(svy$Combo),prop.table(table(svy$Combo)))
+colnames(combo_table)<-c("count","percent")
+
+write.csv(combo_table, file = "SD_Email_List_Combo_Hunt_Lic.csv")
+```
+
+
+Instead of weighting, we'll take a simple random sample of those hunters with valid email addresses. We'll examine the demographics of this sample and confirm that they closely resemble the greater hunter population in SD.
+
+Pull weighted sample of 1000 emails
+```{r}
+sd_email_list<-sample_n(svy, 1000)
+write.csv(sd_email_list, file = "SD_sample_contacts.csv")
+```
+
+Printing Demographics for sample
+```{r}
+#Age Groups
+age_table<-cbind(table(sd_email_list$age_group),prop.table(table(sd_email_list$age_group)))
+colnames(age_table)<-c("count","percent")
+
+write.csv(age_table, file = "SD_Email_Pop_age.csv")
+
+#Gender
+gender_table<-cbind(table(sd_email_list$Gender),prop.table(table(sd_email_list$Gender)))
+colnames(gender_table)<-c("count","percent")
+
+write.csv(gender_table, file = "SD_Email_Pop_gender.csv")
+
+#Annual License
+annual_table<-cbind(table(sd_email_list$Annual),prop.table(table(sd_email_list$Annual)))
+colnames(annual_table)<-c("count","percent")
+
+write.csv(annual_table, file = "SD_Email_Pop_Annual_Hunt_Lic.csv")
+
+#Combo License
+combo_table<-cbind(table(sd_email_list$Combo),prop.table(table(sd_email_list$Combo)))
+colnames(combo_table)<-c("count","percent")
+
+write.csv(combo_table, file = "SD_Email_Pop_Combo_Hunt_Lic.csv")
+```
